@@ -1,0 +1,35 @@
+#!/bin/bash
+# Wrap a command with a call to "mail".
+# The output of the command will be mailed only if it produces output.
+#
+# Usage: wrap-mail <title> [<address>] -- <command> <args> ...
+#
+# <address> (the email address to send to) is optional.
+# If not provided, it defaults to "root".
+#
+# Note that this will eat up all output produced by the command.
+# The exit status of this script matches the exit code of "mail"
+# (NOT the exit code of the command).
+
+MACHINE_NAME="$(hostname --short)"
+MACHINE_HOST="$(hostname --long)"
+USERNAME="$(id -un)"
+TITLE="$1"
+shift
+
+SUBJECT="$MACHINE_NAME ($(date +%m/%d)): $TITLE"
+FROM="$USERNAME@$MACHINE_NAME <$USERNAME@$MACHINE_HOST>"
+TO=root
+if [ "$1" != "--" ]; then
+    TO="$1"
+    shift
+fi
+
+if [ "$1" = "--" ]; then
+    shift
+else
+    >&2 echo "wrap-mail: ARGUMENT ERROR: <command> must be preceded with \"--\""
+    exit 2
+fi
+
+"$@" 2>&1 | mail -E -s "$SUBJECT" -r "$FROM" "$TO"

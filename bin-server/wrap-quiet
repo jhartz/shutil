@@ -1,0 +1,25 @@
+#!/bin/bash
+# Usage: wrap-quiet -- <command> <args> ...
+#
+# If <command> returns successfully (error code 0), then don't print any of
+# its output.
+#
+# Side-effect: stdout and stderr will both be printed to stdout.
+
+if [ "$1" = "--" ]; then
+    shift
+else
+    >&2 echo "wrap-quiet: ARGUMENT ERROR: <command> must be preceded with \"--\""
+    exit 2
+fi
+
+out="$("$@" 2>&1)"
+ret=$?
+
+if [ "$ret" -eq 0 ]; then
+    exit 0
+fi
+
+echo "$out"
+exit $ret
+

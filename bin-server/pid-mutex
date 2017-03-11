@@ -1,0 +1,151 @@
+#!/bin/bash
+# Usage: pid-mutex <lock directory> [<optional args> ...] -- <command> <command args ...>
+#
+# <lock directory> must not already exist (we will create it as the lock).
+#
+# Optional arguments:
+#   --stdout <output log>   Redirect stdout of the command to the provided file.
+#   --stderr <error log>    Redirect stderr of the command to the provided file.
+#   --tee                   When writing to log files, also write to stdout/stderr.
+#
+# The filenames provided for <output log> and <error log> can be the same.
+# These files will be overwritten if they already exist.
+#
+# The "--" between the arguments and the command is required.
+#
+# Return code: the exit status of <command>,
+# or one of the other ones in the 3 constants below.
+
+DEFAULT_EXIT_STATUS=125
+ALREADY_RUNNING_EXIT_STATUS=124
+ARGUMENT_ERROR_EXIT_STATUS=123
+
+argerror() {
+    echo "ARGUMENT ERROR:" "$@"
+    exit $ARGUMENT_ERROR_EXIT_STATUS
+}
+
+LOCKDIR="$(realpath "$1")" || argerror "Invalid lock directory"
+PIDFILE="$LOCKDIR/.pid"
+shift
+
+# PARSE ARGUMENTS
+
+STDOUT_LOG=""
+STDERR_LOG=""
+TEE_ON=""
+
+while [ "$#" -gt 0 ] && [ "$1" != "--" ]; do
+    if [ "$1" = "--stdout" ]; then
+        STDOUT_LOG="$(realpath "$2")" || argerror "Invalid output log"
+        shift 2
+    elif [ "$1" = "--stderr" ]; then
+        STDERR_LOG="$(realpath "$2")" || argerror "Invalid error log"
+        shift 2
+    elif [ "$1" = "--tee" ]; then
+        TEE_ON="yup"
+        shift
+    else
+        argerror "Invalid argument: \"$1\""
+    fi
+done
+
+if [ ! "$STDOUT_LOG" ] && [ ! "$STDERR_LOG" ]; then
+    if [ "$TEE_ON" ]; then
+        argerror "--tee can only be used with --stdout or --stderr"
+    fi
+fi
+
+if [ "$1" = "--" ]; then
+    shift
+else
+    argerror "\"--\" is required"
+fi
+
+# HELPER FUNCTIONS
+
+cleanup() {
+    rm -f "$PIDFILE" >/dev/null 2>&1 || true
+    rmdir "$LOCKDIR" >/dev/null 2>&1 || true
+}
+
+exitstatus=$DEFAULT_EXIT_STATUS
+exitwithstatus() {
+    exit "$exitstatus"
+}
+
+trymkdir() {
+    (umask 0077; mkdir "$LOCKDIR")
+}
+
+# MAKE SURE WE'RE NOT ALREADY RUNNING
+
+if ! trymkdir >/dev/null 2>&1; then
+    pid="$(cat "$PIDFILE" 2>/dev/null)"
+    if [ "$pid" ] && /bin/kill -0 -- "$pid" >/dev/null 2>&1; then
+        echo "WARNING: Already running:"
+        ps u "$pid"
+        exit $ALREADY_RUNNING_EXIT_DTATUS
+    fi
+
+    cleanup
+    if ! trymkdir; then
+        argerror "Couldn't mkdir lock directory after cleanup"
+    fi
+fi
+
+# SET UP CLEANUP AND PID FILE
+
+trap 'cleanup; exitwithstatus' INT TERM EXIT
+my_pid="$$"
+(umask 0077; echo "$my_pid" > "$PIDFILE")
+
+# RUN THE COMMAND
+# (sorry for the mess below)
+
+if [ "$TEE_ON" ]; then
+
+    if [ "$STDOUT_LOG" ] && [ "$STDERR_LOG" ]; then
+        if [ "$STDOUT_LOG" = "$STDERR_LOG" ]; then
+            "$@" 2>&1 | tee "$STDOUT_LOG"
+            exitstatus=${PIPESTATUS[0]}
+        else
+            "$@" > >(tee "$STDOUT_LOG") 2> >(tee "$STDERR_LOG" >&2)
+            exitstatus=$?
+        fi
+    elif [ "$STDOUT_LOG" ]; then
+        "$@" | tee "$STDOUT_LOG"
+        exitstatus=${PIPESTATUS[0]}
+    elif [ "$STDERR_LOG" ]; then
+        "$@" 2> >(tee "$STDERR_LOG" >&2)
+        exitstatus=$?
+    fi
+
+else
+
+    if [ "$STDOUT_LOG" ] && [ "$STDERR_LOG" ]; then
+        if [ "$STDOUT_LOG" = "$STDERR_LOG" ]; then
+            "$@" > "$STDOUT_LOG" 2>&1
+            exitstatus=$?
+        else
+            "$@" > "$STDOUT_LOG" 2> "$STDERR_LOG"
+            exitstatus=$?
+        fi
+    elif [ "$STDOUT_LOG" ]; then
+        "$@" > "$STDOUT_LOG"
+        exitstatus=$?
+    elif [ "$STDERR_LOG" ]; then
+        "$@" 2> "$STDERR_LOG"
+        exitstatus=$?
+    else
+        "$@"
+        exitstatus=$?
+    fi
+
+fi
+
+# CLEAN UP
+
+cleanup
+exitwithstatus
+
