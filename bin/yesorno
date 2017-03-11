@@ -1,0 +1,19 @@
+#!/usr/bin/env python
+#
+# yesorno
+#
+# Will we print `y'? Will we print `n'? It's a mystery!
+#
+# Author: Jake Hartz
+#
+# Sample use cases:
+#     [ yesorno = y ] && rm -rf allmystuff
+#     [ yesorno = y ] && sudo pacman -Rns linux
+
+import sys
+import random
+
+choices = sys.argv[1:]
+if len(choices) == 0:
+    choices = ["y", "n"]
+print(random.choice(choices))

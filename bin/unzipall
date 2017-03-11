@@ -1,0 +1,11 @@
+#!/bin/sh
+# Unzip all the zipfiles in the current directory.
+
+for z in *.zip; do
+    dest="$(echo "$z" | sed 's/.zip$//')"
+    if mkdir "$dest"; then
+        echo "Unzipping $z to $dest/"
+        unzip "$z" -d "$dest"
+    fi
+done
+

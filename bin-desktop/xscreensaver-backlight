@@ -1,0 +1,41 @@
+#!/bin/sh
+
+# Set backlight to 1 when the screen locks, and back to where it was when the
+# screen unlocks
+
+backlight-get() {
+    python -c "print int(rount($(xbacklight -get)))"
+}
+
+backlight-set() {
+    xbacklight -set "$1"
+}
+
+process() {
+    PREV_BACKLIGHT="$(backlight-get)"
+    echo "Initial backlight: $PREV_BACKLIGHT"
+
+    while read input; do
+        case "$input" in
+            UNBLANK*)
+                echo "Setting backlight to $PREV_BACKLIGHT"
+                backlight-set "$PREV_BACKLIGHT"
+                ;;
+            BLANK*)
+                PREV_BACKLIGHT="$(backlight-get)"
+                echo "PREV_BACKLIGHT set to $PREV_BACKLIGHT"
+                ;;
+            LOCK*)
+                echo "Setting backlight from $PREV_BACKLIGHT to 1"
+                backlight-set 1
+                ;;
+            *)
+                echo "Unrecognized input: $input"
+                ;;
+        esac
+    done
+}
+
+/usr/bin/xscreensaver-command -watch | process > \
+    "/tmp/xscreensaver-command-handler.$(date '+%F').log" 2>&1
+

@@ -1,0 +1,27 @@
+#!/bin/bash
+
+COWDIR="/usr/share/cows"
+OFFENSIVE=("head-in" "kiss" "kosh" "sodomized" "telebears")
+
+
+contains() {
+    local e
+    for e in "${@:2}"; do
+        [[ "$e" == "$1" ]] && return 0
+    done
+    return 1
+}
+
+cows=("$COWDIR"/*.cow)
+cow=""
+while [ ! "$cow" ] || contains "$cow" "${OFFENSIVE[@]}"; do
+    cownum="$(expr "$RANDOM" % "${#cows[@]}")"
+    cow="$(basename --suffix=.cow "${cows[$cownum]}")"
+done
+
+args=("" "-b" "-d" "-g" "-p" "-s" "-t" "-w" "-y")
+argnum="$(expr "$RANDOM" % "${#args[@]}")"
+arg="${args[$argnum]}"
+
+fortune | cowsay -f "$cow" $arg
+

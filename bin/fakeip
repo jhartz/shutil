@@ -1,0 +1,86 @@
+#!/bin/sh
+# Forward requests for one IP address to another, using rinetd
+
+usage() {
+    cat << EOF
+fakeip - transparently forward one IP to another
+
+Usage:
+    fakeip <interface> <listen ip> <forward ip> <port> [<remote port>]
+        Initialize and start fakeip
+
+        <interface>   The network interface to use
+        <listen ip>   The fake IP to listen on
+        <forward ip>  The IP to forward requests to
+        <port>        The port that we should listen for requests on
+        <remote port> The port to forward requests to
+                      (default: the same value as "port")
+
+    fakeip stop
+        Stop fakeip
+EOF
+    exit 2
+}
+
+error() {
+    echo "ERROR: $@"
+    exit 1
+}
+
+if [ "$#" -eq 0 ]; then
+    usage
+fi
+
+# TODO: We probably don't *actually* have to be root for all use cases
+if [ "$(id -u)" != "0" ]; then
+    error "Must be root"
+fi
+
+if ! which rinetd >/dev/null 2>&1; then
+    error "Couldn't find rinetd"
+fi
+
+if [ "$1" = "stop" ]; then
+    # TODO: Rather than killing all instances of rinetd, store a pid somewhere
+    killall rinetd
+    rm /tmp/fakeip.00.*
+    exit
+fi
+
+if [ "$#" -lt 4 ]; then
+    usage
+fi
+
+# TODO: Instead of having separate PORT and REMOTEPORT in args, just use
+# LISTENIP[:PORT] FORWARDIP[:PORT]
+
+interface="$1"
+listenip="$2"
+forwardip="$3"
+port="$4"
+remoteport="$4"
+
+if [ "$5" ]; then
+    remoteport="$5"
+fi
+
+if lsof -i ":$port" | grep LISTEN >/dev/null 2>&1; then
+    echo "ERROR: Another process is already listening on port $port"
+    echo ""
+    lsof -i ":$port" | head -n1
+    lsof -i ":$port" | grep LISTEN
+
+    exit 1
+fi
+
+# http://stackoverflow.com/questions/913061/ip-address-spoofing-changing-for-testing-on-local-machine/914570#914570
+ifconfig "$interface":0 "$listenip"
+
+# Give it all some time to "settle down"
+sleep 4
+
+# TODO: $RANDOM is not portable (bashism)
+num="$(date '+%s').$RANDOM"
+echo "$listenip $port $forwardip $remoteport" > "/tmp/fakeip.00.$num"
+rinetd -c "/tmp/fakeip.00.$num"
+

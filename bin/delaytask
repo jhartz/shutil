@@ -1,0 +1,14 @@
+#!/bin/sh
+
+if [ "$#" -lt 2 ]; then
+    echo "Usage: $0 <sleepytime> <command> [<command args> ...]"
+    echo "We will sleep for <sleepytime>, then exec <command>"
+else
+    # Just so I can make a variable called "sleepytime"... so much fun!!
+    sleepytime="$1"
+    # And now, I've always wanted to run a command that looks like this :)
+    sleep "$sleepytime"
+    
+    shift 1
+    exec "$@"
+fi

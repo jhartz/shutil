@@ -1,0 +1,57 @@
+#!/bin/sh
+# Wifi Ad-hoc Network Connector
+
+if [ "$#" -lt 2 ]; then
+    cat << EOF
+Usage: $(basename "$0") <interface> <ssid> [<key>]
+
+       <interface>  The network interface to use.
+       <ssid>       The SSID of the network to connect to.
+       <key>        The network key, if applicable.
+                    If <key> is "-", then the key will be read from stdin.
+
+       WARNING: Be sure to stop other wifi network controllers (wicd, etc.)
+                before calling $(basename "$0")!
+EOF
+    exit 0
+fi
+
+if ! which ifconfig iwconfig dhcpcd psgrep >/dev/null 2>&1; then
+    echo "ERROR: One or more of the following were not found: ifconfig iwconfig dhcpcd psgrep"
+    exit 1
+fi
+
+interface="$1"
+ssid="$2"
+key="$3"
+
+ifconfig "$interface" down
+iwconfig "$interface" mode ad-hoc
+ifconfig "$interface" up
+iwconfig "$interface" mode ad-hoc
+
+connect() {
+    if [ ! "$key" ]; then
+        iwconfig "$interface" essid "$ssid"
+    else
+        if [ "$key" = "-" ]; then
+            echo -n "Enter key: "
+            read key
+        fi
+        iwconfig "$interface" essid "$ssid" key "$key"
+    fi
+}
+
+dhcpcd "$interface"
+c="$?"
+echo "dhcpcd exit code: $c"
+
+if [ "$c" -eq 1 ] && [ "$(psgrep -asn dhcpcd | wc -l)" -eq 0 ]; then
+    iwconfig "$interface" mode ad-hoc
+    iwconfig "$interface" essid "$ssid" key "$key"
+
+    dhcpcd "$interface"
+    c="$?"
+    echo "dhcpcd exit code: $c"
+fi
+

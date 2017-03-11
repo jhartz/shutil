@@ -1,0 +1,3 @@
+#!/bin/sh
+# A virtual mirror, based on your webcam
+xawtv -c /dev/video0 -f

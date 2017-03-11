@@ -1,0 +1,107 @@
+#!/usr/bin/env python2
+"""
+Download a file, continuing the download if the file has already been partially
+downloaded.
+
+Author: Jake Hartz <jake@hartz.io>
+
+Based in part on:
+    http://code.activestate.com/recipes/83208-resuming-download-of-a-file/
+"""
+
+import os
+import sys
+import urllib
+
+
+class MyURLOpener(urllib.FancyURLopener):
+    """
+    Sub-class of FancyURLopener that overrides error 206, since this indicates
+    that a partial file is being sent (which is good for us, not bad).
+    """
+    def http_error_206(self, url, fp, errcode, errmsg, headers, data=None):
+        pass
+
+
+def download_file(source_url, dest_path, debug=False):
+    """
+    Download a file, checking whether the file has already started downloading
+    before (in which case, resume downloading where it was left off).
+
+    :param source_url: The URL of the file to download.
+    :param dest_path: The local path to where we should download the file.
+    :param debug: Whether to print debugging information.
+
+    :return: True is more data was downloaded, or False if the file was already
+        completely downloaded.
+    """
+    existing_size = 0
+    url_opener = MyURLOpener()
+
+    # Check to see if the file exists (i.e. we will resume a previous download)
+    if os.path.exists(dest_path):
+        dest_file = open(dest_path, "ab")
+        existing_size = os.path.getsize(dest_path)
+
+        # Part of the file already exists; only download the remainder
+        if debug: print "Resuming download at %s bytes" % existing_size
+        url_opener.addheader("Range","bytes=%s-" % (existing_size))
+    else:
+        if debug: print "Starting new download"
+        dest_file = open(dest_path,"wb")
+
+    source_request = url_opener.open(source_url)
+    if debug:
+        print ""
+        print "HTTP headers from server:"
+        for k,v in source_request.headers.items():
+            print "   ", k, "=", v
+        print ""
+
+    # If the file exists and we already have the whole thing, we're done
+    if int(source_request.headers["Content-Length"]) == existing_size:
+        return False
+
+    try:
+        if debug: print "Starting download"
+        byte_count = 0
+        while True:
+            # Read some more bytes
+            data = source_request.read(8192)
+            # If there's nothing, then we're done!
+            if not data:
+                break
+            # Write the latest bytes to our output file
+            dest_file.write(data)
+            byte_count = byte_count + len(data)
+    except (KeyboardInterrupt, SystemExit):
+        if debug: print "Download interrupted"
+    finally:
+        # Make sure that everything is closed
+        if debug: print "Closing resources"
+        source_request.close()
+        dest_file.close()
+
+    if debug: print "Copied", byte_count, "bytes from", source_request.url
+
+
+def main():
+    """
+    Download a file based on 2 command line arguments: source_url dest_path
+    """
+    source_url = None
+    dest_path = None
+    if len(sys.argv) == 3:
+        source_url = sys.argv[1]
+        dest_path = sys.argv[2]
+
+    if source_url and dest_path:
+        print "Downloading from", source_url, "to", dest_path
+        download_file(source_url, dest_path, True)
+    else:
+        print "Usage:", sys.argv[0], "<source url> <destination file path>"
+
+
+if __name__ == "__main__":
+    main()
+

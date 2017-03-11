@@ -1,0 +1,23 @@
+#!/bin/sh
+# xdg-mime wrapper to set an application as the default opener for all its MimeTypes
+
+# TODO: We should write out a bash completion script and stick it in /etc/bash_completion.d/
+
+if [ "$#" -lt 1 ]; then
+    echo "Usage: $0 <file in /usr/share/applications> ..."
+    exit 2
+else
+    for i; do
+        if [ -e "/usr/share/applications/$i" ]; then
+            if grep 'MimeType=' "/usr/share/applications/$i" >/dev/null 2>&1; then
+                xdg-mime default "$i" `grep 'MimeType=' "/usr/share/applications/$i" | sed -e 's/.*=//' -e 's/;/ /g'`
+            else
+                echo "$i does not contain any MimeType entries!"
+                exit 1
+            fi
+        else
+            echo "$i not in /usr/share/applications!"
+            exit 1
+        fi
+    done
+fi

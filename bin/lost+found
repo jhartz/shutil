@@ -1,0 +1,120 @@
+#!/bin/bash
+# lost+found assistant
+# Copyright (c) 2013 Jake Hartz
+#
+# This script is licensed under the MIT license.
+# For details, see the LICENSE file.
+#
+# For info and usage, see below or run the script without any arguments.
+
+usage()
+{
+    cat << EOF
+lost+found assistant - helping to sort out the mess in a lost+found directory
+Usage: $0 [options] stage [script|new directory]
+
+Stages:
+    1: List directories and their contents
+    2: List special files
+    3: List non-special, non-empty files
+    4: Pass a list of non-special, non-empty files to <script>
+        (which could also be an editor such as vim)
+    5: Copy each non-special, non-empty file to <new directory>
+
+Most users run stages 1 and 2 and examine the results from each.
+Then, they run either stage 3, stage 4, or stage 5 depending on their intents.
+
+Options:
+    -h        Show usage information
+    -l <dir>  Use <dir> as the lost+found directory
+                (instead of current working directory)
+    -m        Don't list directory contents or symlink targets in stages 1 and 2
+    -n        Don't use color in output
+
+For best results, run fsck on the drive containing the lost+found folder before
+running this script.
+EOF
+    exit 0
+}
+
+if [ "$#" -lt 1 ]; then
+    usage
+fi
+
+lfdir=""
+noextra="no"
+lsopts="--color=always"
+while getopts "mnl:h" opt; do
+    case "$opt" in
+        h) usage;;
+        l) lfdir="$OPTARG";;
+        m) noextra="yes";;
+        n) lsopts="";;
+    esac
+done
+if [ ! "$lfdir" ]; then
+    lfdir="."
+fi
+
+shift $(($OPTIND - 1))
+stage="$1"
+shift 1
+
+if [ "$stage" = "1" ]; then
+    # List directories
+    for i in "$lfdir"/*; do
+        # TODO: Add a test below to kick out empty directories
+        if [ -d "$i" ]; then
+            if [ "$noextra" = "yes" ]; then
+                echo "$i"
+            else
+                echo "Directory $(ls $lsopts -d "$i"):"
+                if [ -L "$i" ]; then
+                    echo "Symbolic link to $(ls -ld "$i" | sed 's/^.* -> //')"
+                else
+                    ls $lsopts -A "$i"
+                fi
+                echo ""
+                echo ""
+            fi
+        fi
+    done
+elif [ "$stage" = "2" ]; then
+    # List special files
+    for i in "$lfdir"/*; do
+        if [ ! -d "$i" ] && [ ! -f "$i" ]; then
+            if [ -L "$i" ] && [ "$noextra" = "no" ]; then
+                echo "$(ls $lsopts -d "$i") (symbolic link to $(ls -ld "$i" | sed 's/^.* -> //'))"
+            else
+                echo "$(ls $lsopts -d "$i")"
+            fi
+        fi
+    done
+elif [ "$stage" = "3" ]; then
+    # List non-special files
+    for i in "$lfdir"/*; do
+        if [ ! -d "$i" ] && [ -f "$i" ] && [ -s "$i" ]; then
+            ls $lsopts -d "$i"
+        fi
+    done
+elif [ "$stage" = "4" ] && [ "$1" ]; then
+    # Pass a list of non-special files to a script
+    list=""
+    for i in "$lfdir"/*; do
+        if [ ! -d "$i" ] && [ -f "$i" ] && [ -s "$i" ]; then
+            list=("${list[@]}" "$i")
+        fi
+    done
+    "$1" "${list[@]:1}"
+elif [ "$stage" = "5" ] && [ "$1" ]; then
+    # Copy each non-special file to a new directory
+    for i in "$lfdir"/*; do
+        if [ ! -d "$i" ] && [ -f "$i" ] && [ -s "$i" ]; then
+            cp -i "$i" "$1"
+        fi
+    done
+    echo "Files copied to $1"
+else
+    usage
+fi
+
