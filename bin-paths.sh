@@ -3,7 +3,9 @@
 THIS_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
 for BIN_DIR in "$THIS_DIR"/bin*; do
-    PATH="$PATH:$BIN_DIR"
+    if [ -d "$BIN_DIR" ]; then
+        PATH="$PATH:$BIN_DIR"
+    fi
 done
 export PATH
 
