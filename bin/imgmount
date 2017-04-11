@@ -1,0 +1,34 @@
+#!/bin/sh
+set -e
+
+if [ "$#" -eq 0 ]; then
+    echo "Usage: $0 diskimage dir"
+    echo "If dir is not provided, then diskimage is set up on a loop device, but not mounted."
+    exit 2
+fi
+
+if [ "$(id -u)" != "0" ]; then
+    echo "$0 must be run as root."
+    exit 1
+fi
+
+from="$1"
+to="$2"
+
+losetup -f >/dev/null || modprobe loop
+
+loop="$(losetup -f)"
+if [ ! "$loop" ]; then
+    echo "Couldn't find unused loop device."
+    exit 1
+fi
+
+losetup "$loop" "$from"
+
+if [ "$to" ]; then
+    mount "$loop" "$to"
+    echo "$from ($loop) mounted at $to"
+else
+    echo "$loop"
+fi
+
