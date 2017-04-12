@@ -7,8 +7,22 @@
 # Author: Jake Hartz
 #
 # Sample use cases:
-#     [ yesorno = y ] && rm -rf allmystuff
-#     [ yesorno = y ] && sudo pacman -Rns linux
+#
+#     [ `yesorno` = y ] && rm -rf allmystuff
+#
+#     [ `yesorno` = y ] && sudo pacman -Rns linux
+#
+# You can also specify possible choices via command-line arguments:
+#
+#     case `yesorno yes no maybe` in
+#       yes)   echo Good dog;;
+#       no)    echo Bad dog;;
+#       maybe) echo Make up your mind;;
+#     esac
+#
+#     yesorno "I love you" "Give me a promotion" "You're a heartless monster" \
+#       | mail my.boss@company.com
+#
 
 import sys
 import random
