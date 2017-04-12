@@ -2,7 +2,7 @@
 set -e
 
 if [ "$#" -eq 0 ]; then
-    echo "Usage: $0 diskimage dir"
+    echo "Usage: $0 diskimage [dir]"
     echo "If dir is not provided, then we won't try to unmount before stopping the loop device."
     exit 2
 fi
@@ -26,7 +26,7 @@ if [ "$to" ]; then
     echo "$to unmounted"
 fi
 
-dmsetup remove "$(basename "$from")"
+#dmsetup remove "$(basename "$from")"
 losetup -d "$loop"
 
 echo "$from is free from the loop"

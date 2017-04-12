@@ -2,7 +2,7 @@
 set -e
 
 if [ "$#" -eq 0 ]; then
-    echo "Usage: $0 diskimage dir"
+    echo "Usage: $0 diskimage [dir [mount options ...]]"
     echo "If dir is not provided, then diskimage is set up on a loop device, but not mounted."
     exit 2
 fi
@@ -26,7 +26,8 @@ fi
 losetup "$loop" "$from"
 
 if [ "$to" ]; then
-    mount "$loop" "$to"
+    shift 2
+    mount "$@" "$loop" "$to"
     echo "$from ($loop) mounted at $to"
 else
     echo "$loop"
