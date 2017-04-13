@@ -1,0 +1,279 @@
+#!/usr/bin/env python3
+# Clean up (delete) old tarsnap archives.
+# Copyright (c) 2017, Jake Hartz.
+#
+# This script is licensed under the MIT license.
+# For details, see https://opensource.org/licenses/MIT
+#
+# Run with --help for usage details.
+
+import argparse
+import datetime
+import os
+import subprocess
+import sys
+
+
+def get_parser():
+    parser = argparse.ArgumentParser(
+        "tarsnap-cleanup",
+        epilog="Either --delete-before or --keep-most-recent (or both) must "
+               "be provided, and using --keep-one-per is recommended with "
+               "either (or both) of the other options."
+    )
+
+    parser.add_argument(
+        "--list",
+        metavar="PATH",
+        help="A file containing the output of tarsnap's --list-archives "
+             "command (so we don't have to run it again). If not provided, "
+             "we'll run \"tarsnap --list-archives\" to get it."
+    )
+    parser.add_argument(
+        "--keyfile",
+        metavar="PATH",
+        help="The tarsnap keyfile (must have delete access)."
+    )
+    parser.add_argument(
+        "--cachedir",
+        metavar="PATH",
+        help="The tarsnap cachedir."
+    )
+    parser.add_argument(
+        "--fsck-prune",
+        action="store_true",
+        help="Run tarsnap with --fsck-prune instead of --fsck before "
+             "starting. This will cause tarsnap to prune any corrupted or "
+             "orphaned data."
+    )
+    parser.add_argument(
+        "--skip-fsck",
+        action="store_true",
+        help="Skip running either --fsck or --fsck-prune before starting the "
+             "deletion. This requires that the cache dir (see --cachedir) is "
+             "already populated."
+    )
+    DEFAULT_FORMAT = "%Y-%m-%d_%H-%M-%S"
+    parser.add_argument(
+        "--format",
+        help="The format of the timestamps in the archives' names "
+             "(in strptime format). Default: \"%s\"" %
+             DEFAULT_FORMAT.replace("%", "%%"),
+        default=DEFAULT_FORMAT
+    )
+    parser.add_argument(
+        "--prefix",
+        help="A prefix that all archive names begin with. This prefix is "
+             "chopped off the archive name before parsing the timestamp from "
+             "the name."
+    )
+    parser.add_argument(
+        "--delete-before",
+        metavar="DATE/TIMESTAMP",
+        help="Any archives before this date will be deleted (unless they are "
+             "kept to satisfy --keep-most-recent). The date or timestamp must "
+             "be in the format specified by --format."
+    )
+    parser.add_argument(
+        "--keep-most-recent",
+        metavar="N",
+        type=int,
+        help="Keep at least this many of the latest archives."
+    )
+    parser.add_argument(
+        "--keep-one-per",
+        metavar="INTERVAL",
+        choices=["hour", "day", "month", "year"],
+        help="Keep at least one archive per a certain interval "
+             "(hour, day, month, or year)."
+    )
+
+    return parser
+
+
+def error(msg, *details):
+    print("Error:", msg)
+    for detail in details:
+        print(detail)
+    sys.exit(1)
+
+
+def ask(msg="Continue?"):
+    if input(msg + " (y/N) ").lower() != "y":
+        sys.exit(0)
+
+
+def validate_args(args):
+    if not args.delete_before and not args.keep_most_recent:
+        error("Either --delete-before or --keep-most-recent (or both) must be "
+              "provided.", "Use the --help argument for more info.")
+
+    if args.keep_most_recent and args.keep_most_recent <= 0:
+        error("--keep-most-recent must be positive.",
+              "Use the --help argument for more info.")
+
+    if args.list and not os.path.exists(args.list):
+        error("File not found: %s" % args.list)
+
+
+def call_tarsnap(args, *tarsnap_args, capture_output=False):
+    kwargs = {}
+    if capture_output:
+        kwargs["stdout"] = subprocess.PIPE
+        kwargs["universal_newlines"] = True
+
+    process_args = ["tarsnap", "--keyfile", args.keyfile]
+    if args.cachedir:
+        process_args += ["--cachedir", args.cachedir]
+    process_args += tarsnap_args
+
+    print("Running:", *process_args)
+    p = subprocess.Popen(process_args, **kwargs)
+    stdout, _ = p.communicate()
+
+    if p.returncode != 0:
+        error("Tarsnap returned nonzero return code: %d" % p.returncode)
+    return stdout
+
+
+def get_archives(args):
+    if args.list:
+        with open(args.list) as f:
+            archive_list = f.read()
+    else:
+        archive_list = call_tarsnap(args, "--list-archives",
+                                    capture_output=True)
+
+    archives = []
+    bad_archives = []
+    for name in sorted(l.strip() for l in archive_list.splitlines()):
+        if not name:
+            continue
+        if args.prefix:
+            if not name.startswith(args.prefix):
+                bad_archives.append(name)
+                continue
+            time_str = name[len(args.prefix):]
+        else:
+            time_str = name
+        try:
+            timestamp = datetime.datetime.strptime(time_str, args.format)
+        except ValueError as e:
+            error("Invalid timestamp %s from name %s" % (time_str, name),
+                  str(e))
+        archives.append((name, timestamp))
+
+    if len(bad_archives) > 0:
+        print("Found archives that didn't have a prefix of", args.prefix)
+        for name in bad_archives:
+            print(name)
+        ask()
+
+    return archives
+
+
+def choose_archives_to_delete(args, archives):
+    # Sort the archives by their timestamps, oldest first
+    to_delete = sorted(archives, key=lambda archive: archive[1])
+
+    # Handle --keep-most-recent
+    if args.keep_most_recent:
+        to_delete = to_delete[:-args.keep_most_recent]
+
+    # Handle --delete-before
+    if args.delete_before:
+        try:
+            delete_before = datetime.datetime.strptime(args.delete_before,
+                                                       args.format)
+        except ValueError as e:
+            error("Invalid timestamp: %s" % args.delete_before, str(e))
+        delete_before_index = len(to_delete)
+        for index, archive in enumerate(to_delete):
+            if archive[1] >= delete_before:
+                delete_before_index = index
+                break
+        to_delete = to_delete[:delete_before_index]
+
+    # Handle --keep-one-per
+    if args.keep_one_per:
+        attrs = ["year", "month", "day", "hour"]
+        last_attr_index = attrs.index(args.keep_one_per)
+        attrs = attrs[:last_attr_index + 1]
+
+        last_attr_set = None
+        i = 0
+        while i < len(to_delete):
+            _, timestamp = to_delete[i]
+            attr_set = [getattr(timestamp, attr) for attr in attrs]
+            if attr_set != last_attr_set:
+                # We have to keep this one
+                to_delete.pop(i)
+                last_attr_set = attr_set
+            else:
+                # We're allowed to delete this one
+                i += 1
+
+    return to_delete
+
+
+def delete_archives(args, to_delete):
+    if len(to_delete) == 0:
+        error("No archives found to delete")
+
+    print("ARCHIVES TO DELETE:")
+    for name, _ in to_delete:
+        print(name)
+
+    if not args.skip_fsck:
+        print()
+        if args.fsck_prune:
+            print("First, we will run \"tarsnap --fsck-prune\" to fix any "
+                  "corrupted archives.")
+        else:
+            print("First, we will run \"tarsnap --fsck\" to ensure that no "
+                  "archives are corrupted.")
+        print("Then, we will delete the archives in the order above.")
+        ask()
+
+        print()
+        if args.fsck_prune:
+            call_tarsnap(args, "--fsck-prune")
+        else:
+            call_tarsnap(args, "--fsck")
+
+        print()
+        print("Done checking archives")
+
+    print()
+    ask()
+    ask("%d archives will be deleted. Are you sure?" % len(to_delete))
+
+    print()
+    print("BEFORE:")
+    call_tarsnap(args, "--print-stats", "--humanize-numbers")
+    print()
+
+    for name, _ in to_delete:
+        call_tarsnap(args, "-d", "-f", name)
+
+    print()
+    print("AFTER:")
+    call_tarsnap(args, "--print-stats", "--humanize-numbers")
+    print()
+
+    print("If this was not run on the machine that is backed up, be sure to "
+          "run \"tarsnap --fsck\" on that machine!")
+
+
+def main():
+    args = get_parser().parse_args()
+    validate_args(args)
+
+    # List of potential archives to delete, as tuples (name, timestamp)
+    archives = get_archives(args)
+    to_delete = choose_archives_to_delete(args, archives)
+    delete_archives(args, to_delete)
+
+
+if __name__ == "__main__":
+    main()
