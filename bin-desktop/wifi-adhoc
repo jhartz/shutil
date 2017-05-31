@@ -36,7 +36,7 @@ connect() {
     else
         if [ "$key" = "-" ]; then
             echo -n "Enter key: "
-            read key
+            read -r key
         fi
         iwconfig "$interface" essid "$ssid" key "$key"
     fi

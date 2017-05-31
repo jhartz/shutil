@@ -10,7 +10,7 @@ else
     for i; do
         if [ -e "/usr/share/applications/$i" ]; then
             if grep 'MimeType=' "/usr/share/applications/$i" >/dev/null 2>&1; then
-                xdg-mime default "$i" `grep 'MimeType=' "/usr/share/applications/$i" | sed -e 's/.*=//' -e 's/;/ /g'`
+                xdg-mime default "$i" "$(grep 'MimeType=' "/usr/share/applications/$i" | sed -e 's/.*=//' -e 's/;/ /g')"
             else
                 echo "$i does not contain any MimeType entries!"
                 exit 1
