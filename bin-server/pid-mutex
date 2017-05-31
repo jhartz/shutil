@@ -85,7 +85,7 @@ if ! trymkdir >/dev/null 2>&1; then
     if [ "$pid" ] && /bin/kill -0 -- "$pid" >/dev/null 2>&1; then
         echo "WARNING: Already running:"
         ps u "$pid"
-        exit $ALREADY_RUNNING_EXIT_DTATUS
+        exit $ALREADY_RUNNING_EXIT_STATUS
     fi
 
     cleanup
