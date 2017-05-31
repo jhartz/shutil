@@ -23,7 +23,7 @@ EOF
 }
 
 error() {
-    echo "ERROR: $@"
+    echo "ERROR:" "$@"
     exit 1
 }
 

@@ -23,5 +23,5 @@ args=("" "-b" "-d" "-g" "-p" "-s" "-t" "-w" "-y")
 argnum="$(expr "$RANDOM" % "${#args[@]}")"
 arg="${args[$argnum]}"
 
-fortune | cowsay -f "$cow" $arg
+fortune | cowsay -f "$cow" "$arg"
 

@@ -9,14 +9,14 @@
 BIRTHDAYS_CALENDAR="Birthdays"
 
 # How far into the future we should look for "upcoming birthdays" (in seconds)
-UPCOMING_DELTA="$(expr 8 '*' 24 '*' 60 '*' 60)"
+UPCOMING_DELTA=$((8 * 24 * 60 * 60))
 
 # The format of gcalcli's dates in the returned agenda
 DATE_FORMAT='^[A-Z][a-z][a-z] [A-Z][a-z][a-z] [0-9][0-9]*'
 
 
 error() {
-    echo "ERROR: $@"
+    echo "ERROR:" "$@"
     exit 1
 }
 
@@ -50,7 +50,7 @@ done
 
 trim() {
     # http://stackoverflow.com/a/3352015
-    local var="$@"
+    local var="$*"
     # remove leading whitespace characters
     var="${var#"${var%%[![:space:]]*}"}"
     # remove trailing whitespace characters
@@ -101,7 +101,7 @@ for item in $_upcoming; do
             # There's no date, so assume previous date
             dat="$olddat"
         fi
-        upcoming="$upcoming $(echo "$item" | sed "s/$DATE_FORMAT//" | sed 's/^\s*//' | sed "s/'s birthday$//") ($(date --date="$(echo "$dat")" '+%a %m/%d'))"
+        upcoming="$upcoming $(echo "$item" | sed "s/$DATE_FORMAT//" | sed 's/^\s*//' | sed "s/'s birthday$//") ($(date --date="$dat" '+%a %m/%d'))"
     fi
 done
 

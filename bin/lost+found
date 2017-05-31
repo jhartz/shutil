@@ -56,7 +56,7 @@ if [ ! "$lfdir" ]; then
     lfdir="."
 fi
 
-shift $(($OPTIND - 1))
+shift $((OPTIND - 1))
 stage="$1"
 shift 1
 
