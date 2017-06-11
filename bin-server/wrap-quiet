@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/bin/sh
 # Usage: wrap-quiet -- <command> <args> ...
 #
 # If <command> returns successfully (error code 0), then don't print any of
