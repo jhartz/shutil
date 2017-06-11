@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/bin/sh
 # Wrap a command with a call to "mail".
 # The output of the command will be mailed only if it produces output.
 #
@@ -8,7 +8,7 @@
 # If not provided, it defaults to "root".
 #
 # Note that this will eat up all output produced by the command.
-# The exit status of this script matches the exit code of "mail"
+# The exit status of this script matches the exit code of "sendmail"
 # (NOT the exit code of the command).
 
 MACHINE_NAME="$(hostname --short)"
@@ -32,4 +32,15 @@ else
     exit 2
 fi
 
-"$@" 2>&1 | mail -E -s "$SUBJECT" -r "$FROM" "$TO"
+output="$("$@" 2>&1)"
+if [ "$output" ]; then
+    sendmail -t <<EOF
+From: $FROM
+To: $TO
+Subject: $SUBJECT
+Content-Type: text/plain
+X-Mailed-By: $0
+
+$output
+EOF
+fi
