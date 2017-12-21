@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/usr/bin/env bash
 
 COWDIR="/usr/share/cows"
 OFFENSIVE=("head-in" "kiss" "kosh" "sodomized" "telebears")

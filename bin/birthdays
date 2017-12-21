@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/usr/bin/env bash
 # A decently hacky script to fetch upcoming birthdays from Google Calendar
 # using gcalcli.
 #

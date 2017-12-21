@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/usr/bin/env bash
 # Usage: pid-mutex <lock directory> [<optional args> ...] -- <command> <command args ...>
 #
 # <lock directory> must not already exist (we will create it as the lock).
