@@ -5,6 +5,7 @@
 # Will we print `y'? Will we print `n'? It's a mystery!
 #
 # Author: Jake Hartz
+# Requires: Python 2 or 3
 #
 # Sample use cases:
 #

@@ -1,0 +1,34 @@
+#!/usr/bin/env python
+#
+# choose
+#
+# Choose one line of stdin to print to stdout
+#
+# Author: Jake Hartz
+# Requires: Python 2 or 3
+#
+# Want to pass arguments on the command line instead? See `yesorno`
+#
+
+import sys
+import random
+
+try:
+    func = raw_input
+except NameError:
+    func = input
+
+choices = []
+while True:
+    try:
+        line = func()
+    except EOFError:
+        break
+    line = line.strip()
+    if line:
+        choices.append(line)
+
+if not choices:
+    sys.exit(1)
+
+print(random.choice(choices))
