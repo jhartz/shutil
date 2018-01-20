@@ -1,0 +1,23 @@
+#!/bin/bash
+# Change the backlight, but don't go below 1%
+
+usage() {
+    echo "Usage:"
+    echo "backlight-set +xx"
+    echo "backlight-set -xx"
+    exit 2
+}
+
+if [ "$#" -ne 1 ]; then
+    usage
+fi
+if ! [[ $1 =~ ^[+\-][0-9]+$ ]]; then
+    usage
+fi
+
+new="$(python2 -c "print int($(xbacklight -get) $1)")"
+if [ "$new" -lt 1 ]; then
+    exec xbacklight -set 1
+else
+    exec xbacklight -set "$new"
+fi
