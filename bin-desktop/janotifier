@@ -1,0 +1,244 @@
+#!/usr/bin/env python3
+# JaNotifier - "Jake's Notifier"
+# Sends notifications on specific events, and sets up a simple Unix socket that
+# accepts JSON to send notifications.
+
+import atexit
+import glob
+import io
+import json
+import os
+import signal
+import socket
+import threading
+import time
+
+from collections import defaultdict
+# The order of the gi.repository modules is important (silly gtk...)
+from gi.repository import Wnck, Gtk, Notify
+
+
+NOTIFIER_SOCKET_FILE = "/tmp/janotifier.sock"
+
+SHOW_WORKSPACE_NOTIFICATIONS = False
+SHOW_BATTERY_NOTIFICATIONS = True
+
+
+class Notifier:
+    """
+    A notifier for a specific category of notifications.
+    """
+
+    gi_initialized = False
+
+    def __init__(self, title="JaNotifier"):
+        self.title = title
+        self.popup = None
+        self.close_timer = None
+
+        if not Notifier.gi_initialized:
+            Notify.init(title)
+            Notifier.gi_initialized = True
+
+    def notify(self, contents, title=None, icon=None, wait_time=4.0, urgency=0):
+        self.close_popup()
+
+        args = [contents]
+        if title:
+            args.insert(0, title)
+        if icon:
+            args.append(icon)
+        self.popup = Notify.Notification.new(*args)
+        self.popup.set_urgency(urgency)
+        self.popup.show()
+
+        self.close_timer = threading.Timer(wait_time, self.close_popup)
+        self.close_timer.start()
+
+    def close_popup(self):
+        if self.close_timer:
+            self.close_timer.cancel()
+        self.close_timer = None
+
+        if self.popup and self.popup.close:
+            self.popup.close()
+        self.popup = None
+
+
+class WorkspaceListener:
+    """
+    Sends notifications when the current workspace changes.
+    """
+
+    def __init__(self):
+        signal.signal(signal.SIGINT, signal.SIG_DFL)
+        self.screen = Wnck.Screen.get_default()
+        self.notifier = Notifier("Workspace Switch Notifier")
+        self.screen.connect("active-workspace-changed", self.fire)
+
+    def fire(self, data_a, data_b):
+        threading.Timer(0.1, self.do_notify).start()
+
+    def do_notify(self):
+        try:
+            workspace_num = str(self.screen.get_active_workspace().get_number() + 1)
+        except Exception as e:
+            print("Error getting workspace:", e)
+            workspace_num = "error"
+        self.notifier.notify("Workspace: " + workspace_num)
+
+
+class BatteryListener:
+    """
+    Sends notifications when the battery is low.
+    """
+
+    LOW_THRESHOLD = 18
+    CRITICAL_THRESHOLD = 9
+
+    def __init__(self):
+        self.notifier = Notifier("Battery Notifier")
+        self.last_capacity = 100
+        self.timer = None
+        self.run()
+
+    def run(self):
+        if self.timer:
+            self.timer.cancel()
+        self.timer = threading.Timer(10.0, self.check)
+        self.timer.start()
+
+    def check(self):
+        data_dirs = glob.glob("/sys/class/power_supply/BAT*/")
+        if len(data_dirs) == 0:
+            raise FileNotFoundError("Cannot find battery info directory")
+
+        data_dir = data_dirs[0]
+        with open(os.path.join(data_dir, "status")) as f:
+            status = f.read().strip()
+        with open(os.path.join(data_dir, "capacity")) as f:
+            capacity_str = f.read().strip()
+
+        try:
+            capacity = int(float(capacity_str))
+        except ValueError:
+            print("Invalid capacity:", capacity_str)
+            # Still keep executing so we restart the timer
+        else:
+            if status == "Charging":
+                self.notifier.close_popup()
+            else:
+                if capacity <= BatteryListener.CRITICAL_THRESHOLD:
+                    # We're at the critical threshold; keep spamming the
+                    # notification no matter what
+                    self.notifier.notify(
+                            title="Battery CRITICAL",
+                            contents="%s%%" % capacity,
+                            icon="battery-caution-symbolic",
+                            wait_time=60.0,
+                            urgency=2)
+                elif capacity <= BatteryListener.LOW_THRESHOLD and \
+                        capacity != self.last_capacity:
+                    # We're at the low threshold, so only send the notification
+                    # if it's different than last time
+                    self.notifier.notify(
+                            title="Battery low",
+                            contents="%s%%" % capacity,
+                            icon="battery-low-symbolic",
+                            wait_time=60.0,
+                            urgency=1)
+                self.last_capacity = capacity
+
+        # Restart the timer
+        self.run()
+
+
+class NotifierSocket(threading.Thread):
+    """
+    Thread that listens on a socket for notifications.
+    """
+
+    def __init__(self, socket_address, socket_type, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+
+        self.socket_address = socket_address
+        self.socket_type = socket_type
+        self.notifiers = defaultdict(lambda: Notifier())
+        self.server = None
+
+    def run(self):
+        if self.socket_type == socket.AF_UNIX and \
+                os.path.exists(self.socket_address):
+            print("Notifier socket file (%s) already exists; deleting..." %
+                    self.socket_address)
+            os.remove(self.socket_address)
+
+        print("Opening notifier socket...")
+        self.server = socket.socket(self.socket_type)
+        self.server.bind(self.socket_address)
+
+        # Set up cleanup
+        atexit.register(self.cleanup)
+
+        self.server.listen(5)
+        print("Listening on", self.socket_address)
+
+        while True:
+            conn, addr = self.server.accept()
+            self.accept_connection(conn, addr)
+
+    def accept_connection(self, conn, addr):
+        data = ""
+        with conn:
+            while True:
+                new_data = conn.recv(1024)
+                if not new_data:
+                    break
+                data += new_data.decode()
+
+        # Parse the data we got
+        try:
+            msg = json.loads(data)
+        except json.JSONDecodeError as e:
+            print("Invalid JSON:", e)
+            print(data)
+            return
+
+        if "group" not in msg or "message" not in msg:
+            print("Missing group or message")
+            return
+
+        wait_time = None
+        if "wait_time" in msg:
+            try:
+                wait_time = float(msg["wait_time"])
+                if wait_time < 0:
+                    wait_time = 0
+            except ValueError:
+                pass
+
+        self.notifiers[msg["group"]].notify(
+                contents=msg["message"],
+                title=msg["title"] if "title" in msg else None,
+                icon=msg["icon"] if "icon" in msg else None,
+                wait_time=wait_time)
+        print("Notification sent for %s" % msg["group"])
+
+    def cleanup(self):
+        if self.server:
+            print("Closing notifier socket...")
+            self.server.close()
+            self.server = None
+
+        if self.socket_type == socket.AF_UNIX:
+            os.remove(self.socket_address)
+
+
+if __name__ == "__main__":
+    if SHOW_WORKSPACE_NOTIFICATIONS:
+        workspace_listener = WorkspaceListener()
+    if SHOW_BATTERY_NOTIFICATIONS:
+        battery_listener = BatteryListener()
+    NotifierSocket(NOTIFIER_SOCKET_FILE, socket.AF_UNIX).start()
+    Gtk.main()
+

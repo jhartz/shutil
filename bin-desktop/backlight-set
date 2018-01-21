@@ -1,5 +1,20 @@
-#!/bin/bash
-# Change the backlight, but don't go below 1%
+#!/bin/sh
+# Change the backlight, but don't go below 1% (or above 100%).
+# Requires that JaNotifier is running
+
+NOTIFICATIONS_SOCKET=/tmp/janotifier.sock
+
+notify() {
+    vol="$1"
+    icon="$2"
+    echo '{
+        "group": "volctrl",
+        "icon": "'"$icon"'",
+        "title": "Volume",
+        "message": "'"$vol"'",
+        "wait_time": 1.5
+    }' | nc -UN "$NOTIFICATIONS_SOCKET"
+}
 
 usage() {
     echo "Usage:"
@@ -15,9 +30,19 @@ if ! [[ $1 =~ ^[+\-][0-9]+$ ]]; then
     usage
 fi
 
-new="$(python2 -c "print int($(xbacklight -get) $1)")"
+new="$(python2 -c "print (int($(xbacklight -get)) $1)")"
 if [ "$new" -lt 1 ]; then
-    exec xbacklight -set 1
-else
-    exec xbacklight -set "$new"
+    new=1
+elif [ "$new" -gt 100 ]; then
+    new=100
 fi
+
+echo '{
+    "group": "backlight",
+    "title": "Brightness",
+    "icon": "display-brightness-symbolic",
+    "message": "'"$new"'%",
+    "wait_time": 1.5
+}' | nc -UN "$NOTIFICATIONS_SOCKET"
+
+exec xbacklight -set "$new"

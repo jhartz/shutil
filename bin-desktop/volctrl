@@ -1,0 +1,76 @@
+#!/bin/sh
+# Usage:
+#   volctrl mute
+#   volctrl up
+#   volctrl down
+# Requires that JaNotifier is running
+
+USE_PA=1
+PA_SINK=0
+NOTIFICATIONS_SOCKET=/tmp/janotifier.sock
+
+notify() {
+    vol="$1"
+    icon="$2"
+    #notify-send -t 1000 --icon="$icon" Volume "$vol" &
+    echo '{
+        "group": "volctrl",
+        "icon": "'"$icon"'",
+        "title": "Volume",
+        "message": "'"$vol"'",
+        "wait_time": 1.5
+    }' | nc -UN "$NOTIFICATIONS_SOCKET"
+}
+
+is_on() {
+    amixer get Master | tail -n1 | sed 's/^.*\[\([a-z]*\)\].*$/\1/'
+}
+
+get_vol() {
+    if [ "$USE_PA" ]; then
+        pactl list sinks \
+            | perl -000ne 'if(/#'"$PA_SINK"'/){/(Volume:.*)/; print "$1\n"}' \
+            | sed 's/.* \([0-9][0-9]*%\) .*/\1/' \
+            | head -n1
+    else
+        amixer get Master | tail -n1 | sed 's/^.*\[\([0-9]*%\)\].*$/\1/'
+    fi
+}
+
+toggle_mute() {
+    if [ "$USE_PA" ]; then
+        pactl set-sink-mute "$PA_SINK" toggle
+    else
+        amixer set Master toggle
+    fi
+}
+
+up() {
+    if [ "$USE_PA" ]; then
+        pactl set-sink-mute "$PA_SINK" false
+        pactl set-sink-volume "$PA_SINK" '+5%'
+    else
+        [ "$(is_on)" = "off" ] && amixer set Master toggle
+        amixer set Master 5%+
+    fi
+}
+
+down() {
+    if [ "$USE_PA" ]; then
+        pactl set-sink-mute "$PA_SINK" false
+        pactl -- set-sink-volume "$PA_SINK" '-5%'
+    else
+        [ "$(is_on)" = "off" ] && amixer set Master toggle
+        amixer set Master 5%-
+    fi
+}
+
+[ "$1" = "mute" ] && toggle_mute
+[ "$1" = "up"   ] && up
+[ "$1" = "down" ] && down
+
+if [ "$(is_on)" = "off" ]; then
+    notify muted stock_volume-mute
+else
+    notify "$(get_vol)" stock_volume
+fi
