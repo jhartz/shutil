@@ -23,7 +23,19 @@ notify() {
 }
 
 is_on() {
-    amixer get Master | tail -n1 | sed 's/^.*\[\([a-z]*\)\].*$/\1/'
+    if [ "$USE_PA" ]; then
+        is_muted="$(pactl list sinks \
+            | egrep '^\s*Mute: ' \
+            | head -n$(expr $PA_SINK + 1) \
+            | sed 's/^\s*Mute: //')"
+        if [ "$is_muted" = "yes" ]; then
+            echo off
+        else
+            echo on
+        fi
+    else
+        amixer get Master | tail -n1 | sed 's/^.*\[\([a-z]*\)\].*$/\1/'
+    fi
 }
 
 get_vol() {
@@ -31,7 +43,7 @@ get_vol() {
         pactl list sinks \
             | perl -000ne 'if(/#'"$PA_SINK"'/){/(Volume:.*)/; print "$1\n"}' \
             | sed 's/.* \([0-9][0-9]*%\) .*/\1/' \
-            | head -n1
+            | head -n$(expr $PA_SINK + 1)
     else
         amixer get Master | tail -n1 | sed 's/^.*\[\([0-9]*%\)\].*$/\1/'
     fi
