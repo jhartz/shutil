@@ -6,7 +6,7 @@
 # Requires that JaNotifier is running
 
 USE_PA=1
-PA_SINK=0
+PA_SINK=1
 NOTIFICATIONS_SOCKET=/tmp/janotifier.sock
 
 notify() {
@@ -27,6 +27,7 @@ is_on() {
         is_muted="$(pactl list sinks \
             | egrep '^\s*Mute: ' \
             | head -n$(expr $PA_SINK + 1) \
+            | tail -n1 \
             | sed 's/^\s*Mute: //')"
         if [ "$is_muted" = "yes" ]; then
             echo off
@@ -43,7 +44,8 @@ get_vol() {
         pactl list sinks \
             | perl -000ne 'if(/#'"$PA_SINK"'/){/(Volume:.*)/; print "$1\n"}' \
             | sed 's/.* \([0-9][0-9]*%\) .*/\1/' \
-            | head -n$(expr $PA_SINK + 1)
+            | head -n$(expr $PA_SINK + 1) \
+            | tail -n1
     else
         amixer get Master | tail -n1 | sed 's/^.*\[\([0-9]*%\)\].*$/\1/'
     fi
