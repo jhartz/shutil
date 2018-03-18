@@ -6,7 +6,7 @@
 #   birthdays [--fold COLUMNS] [--conky-color] [--line-start CONTENT]
 
 # The calendar to use for birthdays
-BIRTHDAYS_CALENDAR="Birthdays"
+BIRTHDAYS_CALENDAR="Contacts"
 
 # How far into the future we should look for "upcoming birthdays" (in seconds)
 UPCOMING_DELTA=$((8 * 24 * 60 * 60))
