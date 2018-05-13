@@ -1,5 +1,6 @@
 #!/bin/sh
 # Wifi Ad-hoc Network Connector
+# TODO: Move from ifconfig/iwconfig to ip
 
 if [ "$#" -lt 2 ]; then
     cat << EOF

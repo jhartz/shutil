@@ -1,0 +1,28 @@
+#!/bin/bash
+# Wifi WPA Network Connector
+
+set -e
+
+INTF=wlp6s0
+
+if [ `id -u` -ne 0 ]; then
+	echo "Usage: sudo ./wifi.sh"
+	exit 2
+fi
+
+echo "wifi.sh -- Connect to WPA network on $INTF"
+read -p "SSID: " SSID
+read -s -p "Password: " PASSWORD
+
+echo ":: Setting interface up..."
+ip link set $INTF up
+ip link show $INTF
+sleep 1
+
+echo ":: Connecting to network..."
+wpa_supplicant -B -i $INTF -c <(wpa_passphrase "$SSID" "$PASSWORD")
+sleep 1
+
+echo ":: Starting dhcpcd..."
+dhcpcd $INTF
+
