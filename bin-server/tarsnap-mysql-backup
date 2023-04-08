@@ -1,0 +1,141 @@
+#!/usr/bin/env bash
+# Execute a tarsnap backup for the specified paths, optionally doing a
+# mysqldump first.
+#
+# Usage: tarsnap-mysql-backup [<optional args>] -- /path/one /path/two ...
+#
+# Optional arguments:
+#   --mysql-backup-dir  <path>          Directory to run mysqldump in
+#                                       (if not specified, skip mysqldump)
+#
+#   --mysql-config-file  <path>         Config file to pass to mysql/mysqldump
+#                                       (generally for passing in creds)
+#
+#   --tarsnap-command  <cmd>            Command to use to run tarsnap
+#                                       (if not specified, defaults to "tarsnap")
+#
+#   --archive-prefix  <prefix>          Prefix for the archive name(s)
+#                                       (if not specified, defaults to `hostname`)
+#
+#   --separate-archives-per-backup-path Whether to create separate backup archives per path
+#                                       (if not specified, a single archive is created)
+#
+# After the optional arguments and a `--', specify the paths to back up.
+# NOTE: If you use --mysql-backup-dir, ensure that that directory is contained
+# somewhere in the paths you're specifying to be backed up!
+#
+# Example:
+#   tarsnap-mysql-backup --mysql-backup-dir /var/backups/mysql --mysql-config-file /root/mysql-creds.cnf -- /etc /home /root /var/backups /var/www
+
+
+set -e
+
+argerror() {
+    echo "ARGUMENT ERROR:" "$@"
+    exit 2
+}
+
+MYSQL_BACKUP_DIR=""
+MYSQL_CONFIG_FILE=""
+TARSNAP_COMMAND="tarsnap"
+ARCHIVE_PREFIX="$(hostname)"
+SEPARATE_ARCHIVES_PER_BACKUP_PATH=0
+
+while [ "$#" -gt 0 ] && [ "$1" != "--" ]; do
+    if [ "$1" = "--mysql-backup-dir" ]; then
+        MYSQL_BACKUP_DIR="$(realpath "$2")" || argerror "Invalid mysql-backup-dir"
+        shift 2
+    elif [ "$1" = "--mysql-config-file" ]; then
+        MYSQL_CONFIG_FILE="$(realpath "$2")" || argerror "Invalid mysql-config-file"
+        shift 2
+    elif [ "$1" = "--tarsnap-command" ]; then
+        TARSNAP_COMMAND="$2"
+        shift 2
+    elif [ "$1" = "--archive-prefix" ]; then
+        ARCHIVE_PREFIX="$2"
+        shift 2
+    elif [ "$1" = "--separate-archives-per-backup-path" ]; then
+        SEPARATE_ARCHIVES_PER_BACKUP_PATH=1
+        shift 1
+    else
+        argerror "Invalid argument: $1"
+    fi
+done
+
+if [ "$1" = "--" ]; then
+    shift
+else
+    argerror "\"--\" is required"
+fi
+
+
+# Do the mysql dump (if requested).
+#   If this fails (MySQL is down), we want to keep going with the backup, but
+#   not do the whole MySQL part. We'll handle that by making sure this command
+#   doesn't kill the bash script (but, record it for the end so we can still
+#   exit failure after running tarsnap).
+MYSQL_FAILED=0
+if [ ! -z "$MYSQL_BACKUP_DIR" ]; then
+    echo "::: STARTING mysql dump - $(date)"
+
+    mysql_extra_args=()
+    if [ ! -z "$MYSQL_CONFIG_FILE" ]; then
+        mysql_extra_args=(--defaults-extra-file="$MYSQL_CONFIG_FILE")
+    fi
+
+    if databases="$(mysql "${mysql_extra_args[@]}" -Bse "SHOW DATABASES;")"; then
+        for db in $databases; do
+            if  [ "$db" != "information_schema" ] && \
+                [ "$db" != "performance_schema" ] && \
+                [ "$db" != "mysql" ] && \
+                [[ "$db" != _* ]]
+            then
+                id="$(date +%Y%m%d%H%M%S).$RANDOM"
+                tmp_dump="$MYSQL_BACKUP_DIR/${db}.${id}.sql"
+                perm_dump="$MYSQL_BACKUP_DIR/${db}.sql"
+
+                if mysqldump "${mysql_extra_args[@]}" --allow-keywords --skip-extended-insert --events --routines --triggers --databases "$db" >"$tmp_dump"
+                then
+                    /bin/mv "$tmp_dump" "$perm_dump"
+                    echo "    $db dumped successfully"
+                else
+                    MYSQL_FAILED=1
+                    if [ -f "$tmp_dump" ]; then /bin/rm "$tmp_dump"; fi
+                    echo "    $db dump FAILED"
+                fi
+
+                sleep 1
+            fi
+        done
+    else
+        MYSQL_FAILED=1
+    fi
+
+    echo "::: FINISHED mysql dump - $(date)"
+    echo ""
+fi
+
+
+# Do the actual tarsnap backup.
+echo "::: STARTING tarsnap backup - $(date)"
+
+if [ "$SEPARATE_ARCHIVES_PER_BACKUP_PATH" -eq 1 ]; then
+    for backup_dir in "$@"; do
+        backup_fname="$ARCHIVE_PREFIX$(echo "$backup_dir" | sed 's|/|_|g')_$(date +%Y-%m-%d_%H-%M-%S)"
+        echo "    $backup_dir --> $backup_fname ..."
+        $TARSNAP_COMMAND -c -f "$backup_fname" --no-print-stats "$backup_dir"
+    done
+    $TARSNAP_COMMAND --print-stats
+else
+    backup_fname="${ARCHIVE_PREFIX}_$(date +%Y-%m-%d_%H-%M-%S)"
+    echo "    $@ --> $backup_fname ..."
+    $TARSNAP_COMMAND -c -f "$backup_fname" "$@"
+fi
+
+echo "::: FINISHED tarsnap backup - $(date)"
+
+
+if [ "$MYSQL_FAILED" = 1 ]; then
+    echo "::: Exiting 1 because mysql failed earlier"
+    exit 1
+fi
