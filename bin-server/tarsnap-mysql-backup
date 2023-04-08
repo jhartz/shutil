@@ -26,6 +26,11 @@
 #
 # Example:
 #   tarsnap-mysql-backup --mysql-backup-dir /var/backups/mysql --mysql-config-file /root/mysql-creds.cnf -- /etc /home /root /var/backups /var/www
+#
+# The MySQL user used to execute the mysqldump will need most "read"
+# permissions on all the databases. For example, you might want to set up
+# their privileges with a statement like:
+#   GRANT SELECT, SHOW DATABASES, LOCK TABLES, SHOW VIEW, EVENT, TRIGGER ON *.* TO ...
 
 
 set -e
