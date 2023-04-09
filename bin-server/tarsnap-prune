@@ -1,0 +1,116 @@
+#!/usr/bin/env bash
+# Prune old tarsnap archives, utilizing the `prunef` tool to implement a
+# grandparent-parent-child rotation scheme that keeps:
+#   - up to 1 backup each hour for the past 24 hours
+#   - up to 1 backup each day for the past 14 days
+#   - up to 1 backup each month for the past 12 months
+#   - up to 1 backup each year for the past 30 years
+#
+# Usage: tarsnap-prune [<optional args>]
+#
+# Optional arguments:
+#   --tarsnap-path  <path>          Path to the tarsnap executable.
+#                                   If not specified, defaults to: "tarsnap"
+#
+#   --prunef-path  <path>           Path to the prunef executable.
+#                                   If not specified, defaults to: "prunef"
+#
+#   --tarsnap-keyfile  <path>       Tarsnap --keyfile argument.
+#
+#   --tarsnap-configfile  <path>    Tarsnap --configfile argument.
+#
+#   --archive-format  <format>      Format of the tarsnap archive names.
+#                                   If not specified, defaults to: "$(hostname)_%Y-%m-%d_%H-%M-%S"
+#                                   (the same format used by tarsnap-mysql-backup)
+#
+#   --list-only                     Just calculate the archives to be deleted;
+#                                   don't actually execute the deletion.
+#                                   (The archive lists will be placed in the
+#                                   "working directory", whose path is printed
+#                                   to stdout.)
+
+set -e
+
+argerror() {
+    >&2 echo "$@"
+    exit 2
+}
+
+info() {
+    >&2 echo ":::" "$@"
+}
+
+TARSNAP_PATH="tarsnap"
+PRUNEF_PATH="prunef"
+TARSNAP_KEYFILE=""
+TARSNAP_CONFIGFILE=""
+ARCHIVE_FORMAT="$(hostname)_%Y-%m-%d_%H-%M-%S"
+LIST_ONLY=0
+
+while [ "$#" -gt 0 ]; do
+    if [ "$1" = "--tarsnap-path" ]; then
+        TARSNAP_PATH="$2"
+        shift 2
+    elif [ "$1" = "--prunef-path" ]; then
+        PRUNEF_PATH="$2"
+        shift 2
+    elif [ "$1" = "--tarsnap-keyfile" ]; then
+        TARSNAP_KEYFILE="$2"
+        shift 2
+    elif [ "$1" = "--tarsnap-configfile" ]; then
+        TARSNAP_CONFIGFILE="$2"
+        shift 2
+    elif [ "$1" = "--archive-format" ]; then
+        ARCHIVE_FORMAT="$2"
+        shift 2
+    elif [ "$1" = "--list-only" ]; then
+        LIST_ONLY=1
+        shift 1
+    else
+        argerror "Invalid argument: $1"
+    fi
+done
+
+tarsnap_args=()
+if [ -n "$TARSNAP_KEYFILE" ]; then
+    tarsnap_args=("${tarsnap_args[@]}" --keyfile "$TARSNAP_KEYFILE")
+fi
+if [ -n "$TARSNAP_CONFIGFILE" ]; then
+    tarsnap_args=("${tarsnap_args[@]}" --configfile "$TARSNAP_CONFIGFILE")
+fi
+
+workdir="/tmp/tarsnap-prune/$(date +%Y%m%d%H%M%S).$RANDOM"
+info "Creating working directory..."
+echo "$workdir"
+mkdir -p "$workdir"
+chmod 700 "$workdir"
+
+archives_file="$workdir/archives.txt"
+info "STARTING listing archives - $(date)"
+"$TARSNAP_PATH" --list-archives "${tarsnap_args[@]}" > "$archives_file"
+
+archives_to_delete_file="$workdir/archives-to-delete.txt"
+"$PRUNEF_PATH" --keep-hourly 24 --keep-daily 14 --keep-monthly 12 --keep-yearly 30 "$ARCHIVE_FORMAT" <"$archives_file" >"$archives_to_delete_file"
+info "FINISHED listing archives - $(date)"
+
+total_archives="$(wc -l "$archives_file")"
+total_archives_to_delete="$(wc -l "$archives_to_delete_file")"
+info "Out of $total_archives archives, $total_archives_to_delete archives marked for deletion"
+
+if [ "$LIST_ONLY" -eq 1 ]; then
+    exit
+fi
+
+if [ "$total_archives_to_delete" -lt 3 ]; then
+    info "Only 2 or fewer archives are marked for deletion; not executing prune"
+    exit
+fi
+
+if [ "$total_archives_to_delete" -eq "$total_archives" ]; then
+    info "ALL ARCHIVES WOULD BE DELETED; not executing prune"
+    exit 1
+fi
+
+info "STARTING deleting archives - $(date)"
+sed 's/^/-f /g' "$archives_to_delete_file" | xargs -n100 "$TARSNAP_PATH" -d "${tarsnap_args[@]}"
+info "FINISHED deleting archives - $(date)"
