@@ -93,8 +93,8 @@ archives_to_delete_file="$workdir/archives-to-delete.txt"
 "$PRUNEF_PATH" --keep-hourly 24 --keep-daily 14 --keep-monthly 12 --keep-yearly 30 "$ARCHIVE_FORMAT" <"$archives_file" >"$archives_to_delete_file"
 info "FINISHED listing archives - $(date)"
 
-total_archives="$(wc -l "$archives_file")"
-total_archives_to_delete="$(wc -l "$archives_to_delete_file")"
+total_archives="$(wc -l <"$archives_file" | sed 's/^[[:space:]]*//')"
+total_archives_to_delete="$(wc -l <"$archives_to_delete_file" | sed 's/^[[:space:]]*//')"
 info "Out of $total_archives archives, $total_archives_to_delete archives marked for deletion"
 
 if [ "$LIST_ONLY" -eq 1 ]; then
