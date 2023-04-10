@@ -23,11 +23,20 @@
 #                                   If not specified, defaults to: "$(hostname)_%Y-%m-%d_%H-%M-%S"
 #                                   (the same format used by tarsnap-mysql-backup)
 #
+#   --clean-up                      Clean up the working directory afterwards
+#                                   (unless an error occurs).
+#
 #   --list-only                     Just calculate the archives to be deleted;
 #                                   don't actually execute the deletion.
 #                                   (The archive lists will be placed in the
 #                                   "working directory", whose path is printed
 #                                   to stdout.)
+#
+#   --mail-list-only  <recipient>   Just calculate the archives to be deleted,
+#                                   and send an email about them to the
+#                                   recipient address provided (if there are 2
+#                                   or more), but don't actually execute the
+#                                   deletion.
 
 set -e
 
@@ -40,12 +49,22 @@ info() {
     >&2 echo ":::" "$@"
 }
 
+cleanup_and_exit() {
+    if [ "$CLEAN_UP" -eq 1 ]; then
+        info "Cleaning up working directory..."
+        rm -r "$workdir"
+    fi
+    exit "$@"
+}
+
 TARSNAP_PATH="tarsnap"
 PRUNEF_PATH="prunef"
 TARSNAP_KEYFILE=""
 TARSNAP_CONFIGFILE=""
 ARCHIVE_FORMAT="$(hostname)_%Y-%m-%d_%H-%M-%S"
+CLEAN_UP=0
 LIST_ONLY=0
+MAIL_LIST_TO=""
 
 while [ "$#" -gt 0 ]; do
     if [ "$1" = "--tarsnap-path" ]; then
@@ -63,9 +82,16 @@ while [ "$#" -gt 0 ]; do
     elif [ "$1" = "--archive-format" ]; then
         ARCHIVE_FORMAT="$2"
         shift 2
+    elif [ "$1" = "--clean-up" ]; then
+        CLEAN_UP=1
+        shift 1
     elif [ "$1" = "--list-only" ]; then
         LIST_ONLY=1
         shift 1
+    elif [ "$1" = "--mail-list-only" ]; then
+        LIST_ONLY=1
+        MAIL_LIST_TO="$2"
+        shift 2
     else
         argerror "Invalid argument: $1"
     fi
@@ -97,20 +123,46 @@ total_archives="$(wc -l <"$archives_file" | sed 's/^[[:space:]]*//')"
 total_archives_to_delete="$(wc -l <"$archives_to_delete_file" | sed 's/^[[:space:]]*//')"
 info "Out of $total_archives archives, $total_archives_to_delete archives marked for deletion"
 
+if [ -n "$MAIL_LIST_TO" ] && [ "$total_archives_to_delete" -gt 1 ]; then
+    MACHINE_NAME="$(hostname --short)"
+    MACHINE_HOST="$(hostname --long)"
+    USERNAME="$(id -un)"
+
+    info "Mailing $MAIL_LIST_TO ..."
+    # from/to/subject calculated similar to wrap-mail
+    sendmail -t <<EOF
+From: $USERNAME@$MACHINE_NAME <$USERNAME@$MACHINE_HOST>
+To: $MAIL_LIST_TO
+Subject: $MACHINE_NAME ($(date +%m/%d)): Backup pruning time!
+Content-Type: text/plain
+X-Mailed-By: $0
+
+You have several backup archives that can be deleted!
+Out of $total_archives archives, $total_archives_to_delete can be deleted.
+
+It's time to run $0
+
+Archives that can be deleted:
+$(cat "$archives_to_delete_file" | sort)
+EOF
+fi
+
 if [ "$LIST_ONLY" -eq 1 ]; then
-    exit
+    cleanup_and_exit
 fi
 
 if [ "$total_archives_to_delete" -lt 3 ]; then
     info "Only 2 or fewer archives are marked for deletion; not executing prune"
-    exit
+    cleanup_and_exit
 fi
 
 if [ "$total_archives_to_delete" -eq "$total_archives" ]; then
     info "ALL ARCHIVES WOULD BE DELETED; not executing prune"
-    exit 1
+    cleanup_and_exit 1
 fi
 
 info "STARTING deleting archives - $(date)"
 sed 's/^/-f /g' "$archives_to_delete_file" | xargs -n100 "$TARSNAP_PATH" -d "${tarsnap_args[@]}"
 info "FINISHED deleting archives - $(date)"
+
+cleanup_and_exit
