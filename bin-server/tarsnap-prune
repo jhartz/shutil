@@ -20,7 +20,7 @@
 #   --tarsnap-configfile  <path>    Tarsnap --configfile argument.
 #
 #   --archive-format  <format>      Format of the tarsnap archive names.
-#                                   If not specified, defaults to: "$(hostname)_%Y-%m-%d_%H-%M-%S"
+#                                   If not specified, defaults to: "$(hostname -s)_%Y-%m-%d_%H-%M-%S"
 #                                   (the same format used by tarsnap-mysql-backup)
 #
 #   --clean-up                      Clean up the working directory afterwards
@@ -61,7 +61,7 @@ TARSNAP_PATH="tarsnap"
 PRUNEF_PATH="prunef"
 TARSNAP_KEYFILE=""
 TARSNAP_CONFIGFILE=""
-ARCHIVE_FORMAT="$(hostname)_%Y-%m-%d_%H-%M-%S"
+ARCHIVE_FORMAT="$(hostname -s)_%Y-%m-%d_%H-%M-%S"
 CLEAN_UP=0
 LIST_ONLY=0
 MAIL_LIST_TO=""
@@ -124,8 +124,13 @@ total_archives_to_delete="$(wc -l <"$archives_to_delete_file" | sed 's/^[[:space
 info "Out of $total_archives archives, $total_archives_to_delete archives marked for deletion"
 
 if [ -n "$MAIL_LIST_TO" ] && [ "$total_archives_to_delete" -gt 1 ]; then
-    MACHINE_NAME="$(hostname --short)"
-    MACHINE_HOST="$(hostname --long)"
+    if hostname --short >/dev/null 2>&1; then
+        MACHINE_NAME="$(hostname --short)"
+        MACHINE_HOST="$(hostname --long)"
+    else
+        MACHINE_NAME="$(hostname -s)"
+        MACHINE_HOST="$(hostname)"
+    fi
     USERNAME="$(id -un)"
 
     info "Mailing $MAIL_LIST_TO ..."

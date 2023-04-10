@@ -11,8 +11,13 @@
 # The exit status of this script matches the exit code of "sendmail"
 # (NOT the exit code of the command).
 
-MACHINE_NAME="$(hostname --short)"
-MACHINE_HOST="$(hostname --long)"
+if hostname --short >/dev/null 2>&1; then
+    MACHINE_NAME="$(hostname --short)"
+    MACHINE_HOST="$(hostname --long)"
+else
+    MACHINE_NAME="$(hostname -s)"
+    MACHINE_HOST="$(hostname)"
+fi
 USERNAME="$(id -un)"
 TITLE="$1"
 shift

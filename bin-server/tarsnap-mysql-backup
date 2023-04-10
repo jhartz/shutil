@@ -15,7 +15,7 @@
 #                                       (if not specified, defaults to "tarsnap")
 #
 #   --archive-prefix  <prefix>          Prefix for the archive name(s)
-#                                       (if not specified, defaults to `hostname`)
+#                                       (if not specified, defaults to `hostname -s`)
 #
 #   --separate-archives-per-backup-path Whether to create separate backup archives per path
 #                                       (if not specified, a single archive is created)
@@ -32,7 +32,6 @@
 # their privileges with a statement like:
 #   GRANT SELECT, SHOW DATABASES, LOCK TABLES, SHOW VIEW, EVENT, TRIGGER ON *.* TO ...
 
-
 set -e
 
 argerror() {
@@ -43,7 +42,7 @@ argerror() {
 MYSQL_BACKUP_DIR=""
 MYSQL_CONFIG_FILE=""
 TARSNAP_COMMAND="tarsnap"
-ARCHIVE_PREFIX="$(hostname)"
+ARCHIVE_PREFIX="$(hostname -s)"
 SEPARATE_ARCHIVES_PER_BACKUP_PATH=0
 
 while [ "$#" -gt 0 ] && [ "$1" != "--" ]; do
