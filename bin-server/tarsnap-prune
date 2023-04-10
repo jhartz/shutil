@@ -32,11 +32,18 @@
 #                                   "working directory", whose path is printed
 #                                   to stdout.)
 #
-#   --mail-list-only  <recipient>   Just calculate the archives to be deleted,
-#                                   and send an email about them to the
-#                                   recipient address provided (if there are 2
-#                                   or more), but don't actually execute the
-#                                   deletion.
+#   --mail-list-to  <recipient>     Just calculate the archives to be deleted
+#                                   (implies --list-only), and send an email
+#                                   about them to the recipient address
+#                                   provided (if the number available to be
+#                                   pruned is greater than the threshold set
+#                                   below).
+#
+#   --mail-list-threshold  <count>  If --mail-list-to is provided, this is the
+#                                   threshold at which we'll actually send the
+#                                   email (if fewer than this many archives
+#                                   are available to be pruned, we'll skip
+#                                   sending the email). Default is 1.
 
 set -e
 
@@ -65,6 +72,7 @@ ARCHIVE_FORMAT="$(hostname -s)_%Y-%m-%d_%H-%M-%S"
 CLEAN_UP=0
 LIST_ONLY=0
 MAIL_LIST_TO=""
+MAIL_LIST_THRESHOLD=1
 
 while [ "$#" -gt 0 ]; do
     if [ "$1" = "--tarsnap-path" ]; then
@@ -88,9 +96,12 @@ while [ "$#" -gt 0 ]; do
     elif [ "$1" = "--list-only" ]; then
         LIST_ONLY=1
         shift 1
-    elif [ "$1" = "--mail-list-only" ]; then
+    elif [ "$1" = "--mail-list-to" ]; then
         LIST_ONLY=1
         MAIL_LIST_TO="$2"
+        shift 2
+    elif [ "$1" = "--mail-list-threshold" ]; then
+        MAIL_LIST_THRESHOLD="$2"
         shift 2
     else
         argerror "Invalid argument: $1"
@@ -123,22 +134,25 @@ total_archives="$(wc -l <"$archives_file" | sed 's/^[[:space:]]*//')"
 total_archives_to_delete="$(wc -l <"$archives_to_delete_file" | sed 's/^[[:space:]]*//')"
 info "Out of $total_archives archives, $total_archives_to_delete archives marked for deletion"
 
-if [ -n "$MAIL_LIST_TO" ] && [ "$total_archives_to_delete" -gt 1 ]; then
-    if hostname --short >/dev/null 2>&1; then
-        MACHINE_NAME="$(hostname --short)"
-        MACHINE_HOST="$(hostname --long)"
+if [ -n "$MAIL_LIST_TO" ]; then
+    if [ "$total_archives_to_delete" -lt "$MAIL_LIST_THRESHOLD" ]; then
+        info "Not sending email because $total_archives_to_delete is < threshold of $MAIL_LIST_THRESHOLD"
     else
-        MACHINE_NAME="$(hostname -s)"
-        MACHINE_HOST="$(hostname)"
-    fi
-    USERNAME="$(id -un)"
+        if hostname --short >/dev/null 2>&1; then
+            MACHINE_NAME="$(hostname --short)"
+            MACHINE_HOST="$(hostname --long)"
+        else
+            MACHINE_NAME="$(hostname -s)"
+            MACHINE_HOST="$(hostname)"
+        fi
+        USERNAME="$(id -un)"
 
-    info "Mailing $MAIL_LIST_TO ..."
-    # from/to/subject calculated similar to wrap-mail
-    sendmail -t <<EOF
+        info "Mailing $MAIL_LIST_TO ..."
+        # from/to/subject calculated similar to wrap-mail
+        sendmail -t <<EOF
 From: $USERNAME@$MACHINE_NAME <$USERNAME@$MACHINE_HOST>
 To: $MAIL_LIST_TO
-Subject: $MACHINE_NAME ($(date +%m/%d)): Backup pruning time!
+Subject: $MACHINE_NAME ($(date +%m/%d)): Time to prune backups!
 Content-Type: text/plain
 X-Mailed-By: $0
 
@@ -150,6 +164,7 @@ It's time to run $0
 Archives that can be deleted:
 $(cat "$archives_to_delete_file" | sort)
 EOF
+    fi
 fi
 
 if [ "$LIST_ONLY" -eq 1 ]; then
