@@ -1,10 +1,18 @@
 #!/bin/sh
-# Usage: wrap-quiet -- <command> <args> ...
+# Usage: wrap-quiet [--stderr] -- <command> <args> ...
 #
 # If <command> returns successfully (error code 0), then don't print any of
-# its output.
+# its output (from either stdout or stderr). Otherwise, print all of its
+# output to stdout (or stderr if the optional --stderr flag is specified).
 #
-# Side-effect: stdout and stderr will both be printed to stdout.
+# Side-effect: stdout and stderr will both be printed to stdout (or stderr
+# depending on the inclusion of the --stderr flag, as noted above).
+
+use_stderr=0
+if [ "$1" = "--stderr" ]; then
+    use_stderr=1
+    shift
+fi
 
 if [ "$1" = "--" ]; then
     shift
@@ -20,6 +28,10 @@ if [ "$ret" -eq 0 ]; then
     exit 0
 fi
 
-echo "$out"
-exit $ret
+if [ "$use_stderr" -eq 1 ]; then
+    >&2 echo "$out"
+else
+    echo "$out"
+fi
 
+exit $ret
