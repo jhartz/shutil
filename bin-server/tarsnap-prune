@@ -171,6 +171,9 @@ It's time to run: $MAIL_LIST_CTA_COMMAND
 
 Archives that can be deleted:
 $(cat "$archives_to_delete_file" | sort)
+
+Archives that would be kept:
+$(cat "$archives_to_delete_file" "$archives_file" | sort | uniq -u)
 EOF
     fi
 fi
