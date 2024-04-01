@@ -101,7 +101,7 @@ if [ ! -z "$MYSQL_BACKUP_DIR" ]; then
                 if mysqldump "${mysql_extra_args[@]}" --allow-keywords --skip-extended-insert --events --routines --triggers --databases "$db" >"$tmp_dump"
                 then
                     /bin/mv "$tmp_dump" "$perm_dump"
-                    echo "    $db dumped successfully"
+                    echo "    $db dumped successfully ($(du -h "$perm_dump" | cut -f1))"
                 else
                     MYSQL_FAILED=1
                     if [ -f "$tmp_dump" ]; then /bin/rm "$tmp_dump"; fi
