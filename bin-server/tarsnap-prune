@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Prune old tarsnap archives, utilizing the `prunef` tool to implement a
 # grandparent-parent-child rotation scheme that keeps:
-#   - up to 1 backup each hour for the past 24 hours
+#   - up to 1 backup each hour for the past 48 hours
 #   - up to 1 backup each day for the past 14 days
 #   - up to 1 backup each month for the past 12 months
 #   - up to 1 backup each year for the past 30 years
@@ -135,7 +135,7 @@ info "STARTING listing archives - $(date)"
 "$TARSNAP_PATH" --list-archives "${tarsnap_args[@]}" > "$archives_file"
 
 archives_to_delete_file="$workdir/archives-to-delete.txt"
-"$PRUNEF_PATH" --keep-hourly 24 --keep-daily 14 --keep-monthly 12 --keep-yearly 30 "$ARCHIVE_FORMAT" <"$archives_file" >"$archives_to_delete_file"
+"$PRUNEF_PATH" --keep-hourly 48 --keep-daily 14 --keep-monthly 12 --keep-yearly 30 "$ARCHIVE_FORMAT" <"$archives_file" >"$archives_to_delete_file"
 info "FINISHED listing archives - $(date)"
 
 total_archives="$(wc -l <"$archives_file" | sed 's/^[[:space:]]*//')"
