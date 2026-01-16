@@ -192,6 +192,9 @@ if [ "$total_archives_to_delete" -eq "$total_archives" ]; then
     cleanup_and_exit 1
 fi
 
+info "Keeping archives:\n$(cat "$archives_to_delete_file" "$archives_file" | sort | uniq -u)\n"
+info "Deleting archives:\n$(cat "$archives_to_delete_file" | sort)\n"
+
 info "STARTING deleting archives - $(date)"
 sed 's/^/-f /g' "$archives_to_delete_file" | xargs -n100 "$TARSNAP_PATH" -d "${tarsnap_args[@]}"
 info "FINISHED deleting archives - $(date)"
