@@ -1,10 +1,6 @@
 #!/usr/bin/env bash
 # Prune old tarsnap archives, utilizing the `prunef` tool to implement a
-# grandparent-parent-child rotation scheme that keeps:
-#   - up to 1 backup each hour for the past 48 hours
-#   - up to 1 backup each day for the past 14 days
-#   - up to 1 backup each month for the past 12 months
-#   - up to 1 backup each year for the past 30 years
+# grandparent-parent-child rotation scheme.
 #
 # Usage: tarsnap-prune [<optional args>]
 #
@@ -48,6 +44,21 @@
 #   --mail-list-cta-command  <cmd>  If --mail-list-to is provided, this is the
 #                                   command that we'll suggest users run.
 #                                   Default is the path to this script.
+#
+#
+# Details on the grandparent-parent-child rotation scheme: Currently, we keep:
+#   - up to 1 backup each hour for the past 48 hours
+#   - up to 1 backup each day for the past 14 days
+#   - up to 1 backup each week for the past 8 weeks
+#   - up to 1 backup each month for the past 12 months
+#   - up to 1 backup each year for the past 30 years
+#
+# With the hourly/daily settings we've chosen, we also NEED a weekly setting of
+# at least 8 to bridge the gap between daily and monthly granularity. Without
+# it, the first monthly slot can span 2 calendar months, and since only the
+# newest backup per slot is kept, one of those months can lose all its backups.
+#
+# `prunef` is from: https://git.sr.ht/~apreiml/prunef
 
 set -e
 
@@ -135,7 +146,8 @@ info "STARTING listing archives - $(date)"
 "$TARSNAP_PATH" --list-archives "${tarsnap_args[@]}" > "$archives_file"
 
 archives_to_delete_file="$workdir/archives-to-delete.txt"
-"$PRUNEF_PATH" --keep-hourly 48 --keep-daily 14 --keep-monthly 12 --keep-yearly 30 "$ARCHIVE_FORMAT" <"$archives_file" >"$archives_to_delete_file"
+# See docs at top for why we've chosen some of these values
+"$PRUNEF_PATH" --keep-hourly 48 --keep-daily 14 --keep-weekly 8 --keep-monthly 12 --keep-yearly 30 "$ARCHIVE_FORMAT" <"$archives_file" >"$archives_to_delete_file"
 info "FINISHED listing archives - $(date)"
 
 total_archives="$(wc -l <"$archives_file" | sed 's/^[[:space:]]*//')"
