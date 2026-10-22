@@ -92,6 +92,7 @@ if [ ! -z "$MYSQL_BACKUP_DIR" ]; then
             if  [ "$db" != "information_schema" ] && \
                 [ "$db" != "performance_schema" ] && \
                 [ "$db" != "mysql" ] && \
+                [ "$db" != "sys" ] && \
                 [[ "$db" != _* ]]
             then
                 id="$(date +%Y%m%d%H%M%S).$RANDOM"
